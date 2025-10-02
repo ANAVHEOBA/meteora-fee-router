@@ -12,6 +12,12 @@ pub mod errors;
 use modules::position::contexts::InitializePosition;
 use modules::position::contexts::__client_accounts_initialize_position;
 use modules::position::instructions;
+use modules::claiming::contexts::{InitializeTreasury, ClaimFees};
+use modules::claiming::contexts::{__client_accounts_initialize_treasury, __client_accounts_claim_fees};
+use modules::claiming::instructions as claiming_instructions;
+use modules::distribution::contexts::{InitializeGlobalDistribution, StartDailyDistribution, ProcessInvestorPage, CompleteDailyDistribution};
+use modules::distribution::contexts::{__client_accounts_initialize_global_distribution, __client_accounts_start_daily_distribution, __client_accounts_process_investor_page, __client_accounts_complete_daily_distribution};
+use modules::distribution::instructions as distribution_instructions;
 
 #[program]
 pub mod meteora_fee_router {
@@ -22,8 +28,36 @@ pub mod meteora_fee_router {
         instructions::initialize_position(ctx)
     }
 
+    /// Initialize the treasury for fee claiming
+    pub fn initialize_treasury(ctx: Context<InitializeTreasury>, quote_mint: Pubkey) -> Result<()> {
+        claiming_instructions::initialize_treasury(ctx, quote_mint)
+    }
+
+    /// Claim fees from the honorary position
+    pub fn claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
+        claiming_instructions::claim_fees(ctx)
+    }
+
+    /// Initialize global distribution state
+    pub fn initialize_global_distribution(ctx: Context<InitializeGlobalDistribution>, quote_mint: Pubkey) -> Result<()> {
+        distribution_instructions::initialize_global_distribution(ctx, quote_mint)
+    }
+
+    /// Start a new daily distribution (24-hour crank)
+    pub fn start_daily_distribution(ctx: Context<StartDailyDistribution>, distribution_day: i64) -> Result<()> {
+        distribution_instructions::start_daily_distribution(ctx, distribution_day)
+    }
+
+    /// Process a page of investors in the current distribution
+    pub fn process_investor_page(ctx: Context<ProcessInvestorPage>) -> Result<()> {
+        distribution_instructions::process_investor_page(ctx)
+    }
+
+    /// Complete the daily distribution
+    pub fn complete_daily_distribution(ctx: Context<CompleteDailyDistribution>) -> Result<()> {
+        distribution_instructions::complete_daily_distribution(ctx)
+    }
+
     // TODO: Add other instructions as modules are built
-    // pub fn initialize_policy(ctx: Context<policy::InitializePolicy>, ...) -> Result<()
-    // pub fn distribute_fees(ctx: Context<distribution::DistributeFees>, ...) -> Result<()
-    // pub fn claim_fees(ctx: Context<claiming::ClaimFees>) -> Result<()
+    // pub fn initialize_policy(ctx: Context<policy::InitializePolicy>, ...) -> Result<()>
 }

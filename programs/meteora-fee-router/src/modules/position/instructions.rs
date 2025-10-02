@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use crate::modules::position::contexts::*;
 use crate::modules::position::events::*;
+use crate::modules::position::state::PositionMetadata;
 use crate::integrations::meteora;
 use crate::shared::constants::*;
 
@@ -56,16 +57,56 @@ pub fn initialize_position(ctx: Context<InitializePosition>) -> Result<()> {
         Some(signer_seeds),
     )?;
 
-    // Step 3 - Emit event
+    // Step 3 - Add minimal liquidity to activate fee collection
+    msg!("Adding minimal liquidity to activate position");
+    
+    // Determine quote amount for minimal liquidity (e.g., 1000 units)
+    let minimal_quote_amount = 1000u64;
+    let liquidity_params = meteora::AddLiquidityParameters::minimal_quote_only(minimal_quote_amount);
+
+    meteora::cpi::add_liquidity(
+        ctx.accounts.pool.to_account_info(),
+        ctx.accounts.position.to_account_info(),
+        ctx.accounts.authority_token_a.to_account_info(),
+        ctx.accounts.authority_token_b.to_account_info(),
+        ctx.accounts.token_a_vault.to_account_info(),
+        ctx.accounts.token_b_vault.to_account_info(),
+        ctx.accounts.base_mint.to_account_info(),
+        ctx.accounts.quote_mint.to_account_info(),
+        ctx.accounts.position_nft_account.to_account_info(),
+        ctx.accounts.position_owner_pda.to_account_info(),
+        ctx.accounts.token_a_program.to_account_info(),
+        ctx.accounts.token_b_program.to_account_info(),
+        ctx.accounts.event_authority.to_account_info(),
+        ctx.accounts.meteora_program.to_account_info(),
+        liquidity_params,
+        Some(signer_seeds),
+    )?;
+
+    // Step 4 - Initialize position metadata
+    msg!("Storing position metadata");
+    
+    let clock = Clock::get()?;
+    ctx.accounts.position_metadata.set_inner(PositionMetadata {
+        position: ctx.accounts.position.key(),
+        pool: ctx.accounts.pool.key(),
+        quote_mint: ctx.accounts.quote_mint.key(),
+        base_mint: ctx.accounts.base_mint.key(),
+        created_at: clock.unix_timestamp,
+        position_owner_bump: bump,
+        reserved: [0; 64],
+    });
+
+    // Step 5 - Emit event
     emit!(HonoraryPositionInitialized {
         position: ctx.accounts.position.key(),
         pool: ctx.accounts.pool.key(),
         quote_mint: ctx.accounts.quote_mint.key(),
         base_mint: ctx.accounts.base_mint.key(),
         position_owner: ctx.accounts.position_owner_pda.key(),
-        timestamp: Clock::get()?.unix_timestamp,
+        timestamp: clock.unix_timestamp,
     });
 
-    msg!("✅ Honorary position initialized successfully");
+    msg!("✅ Honorary position initialized with liquidity and metadata successfully");
     Ok(())
 }

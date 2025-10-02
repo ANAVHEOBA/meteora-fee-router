@@ -2,6 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::Mint;
 use anchor_spl::token_2022::Token2022;
 use crate::integrations::meteora::POOL_AUTHORITY;
+use crate::modules::position::state::PositionMetadata;
 use crate::shared::constants::*;
 
 /// Accounts required to initialize the honorary fee position
@@ -67,6 +68,38 @@ pub struct InitializePosition<'info> {
 
     /// Token program (Token2022 for Meteora)
     pub token_program: Program<'info, Token2022>,
+
+    /// Token A program (for add_liquidity)
+    pub token_a_program: Program<'info, Token2022>,
+
+    /// Token B program (for add_liquidity) 
+    pub token_b_program: Program<'info, Token2022>,
+
+    /// Authority's token A account (for providing liquidity)
+    #[account(mut)]
+    pub authority_token_a: UncheckedAccount<'info>,
+
+    /// Authority's token B account (for providing liquidity)
+    #[account(mut)]
+    pub authority_token_b: UncheckedAccount<'info>,
+
+    /// Pool's token A vault
+    #[account(mut)]
+    pub token_a_vault: UncheckedAccount<'info>,
+
+    /// Pool's token B vault
+    #[account(mut)]
+    pub token_b_vault: UncheckedAccount<'info>,
+
+    /// Position metadata account to store position information
+    #[account(
+        init,
+        payer = authority,
+        space = 8 + PositionMetadata::INIT_SPACE,
+        seeds = [b"position_metadata", position_nft_mint.key().as_ref()],
+        bump,
+    )]
+    pub position_metadata: Account<'info, PositionMetadata>,
 
     /// Rent sysvar
     pub rent: Sysvar<'info, Rent>,

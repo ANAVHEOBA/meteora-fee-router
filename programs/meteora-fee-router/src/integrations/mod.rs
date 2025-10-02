@@ -1,4 +1,4 @@
-// External program integrations
+// Integration modules for external protocols
 
 pub mod meteora;
-// pub mod streamflow;
+pub mod streamflow;

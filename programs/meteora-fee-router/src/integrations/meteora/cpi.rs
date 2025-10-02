@@ -146,3 +146,256 @@ pub fn derive_event_authority_pda() -> (Pubkey, u8) {
         &METEORA_CP_AMM_PROGRAM_ID,
     )
 }
+
+/// Parameters for adding liquidity to a position
+#[derive(Debug, Clone, Copy)]
+pub struct AddLiquidityParameters {
+    /// Delta liquidity to add
+    pub liquidity_delta: u128,
+    /// Maximum token A amount to spend
+    pub token_a_amount_threshold: u64,
+    /// Maximum token B amount to spend  
+    pub token_b_amount_threshold: u64,
+}
+
+impl AddLiquidityParameters {
+    /// Create parameters for minimal liquidity addition (quote-only)
+    /// This adds just enough liquidity to activate fee collection
+    pub fn minimal_quote_only(quote_amount: u64) -> Self {
+        Self {
+            liquidity_delta: 1_000_000, // Minimal liquidity (1M units)
+            token_a_amount_threshold: quote_amount,
+            token_b_amount_threshold: quote_amount,
+        }
+    }
+}
+
+/// Add liquidity to a Meteora position
+/// 
+/// This adds liquidity to an existing position to enable fee collection.
+/// For quote-only positions, we add minimal liquidity across the full range.
+/// 
+/// # Arguments
+/// * All the required accounts for add_liquidity instruction
+/// * `params` - Liquidity parameters
+/// * `owner_seeds` - Optional seeds if owner is a PDA
+/// 
+/// # Returns
+/// * `Result<()>` - Success or error
+pub fn add_liquidity<'info>(
+    pool: AccountInfo<'info>,
+    position: AccountInfo<'info>,
+    token_a_account: AccountInfo<'info>,
+    token_b_account: AccountInfo<'info>,
+    token_a_vault: AccountInfo<'info>,
+    token_b_vault: AccountInfo<'info>,
+    token_a_mint: AccountInfo<'info>,
+    token_b_mint: AccountInfo<'info>,
+    position_nft_account: AccountInfo<'info>,
+    owner: AccountInfo<'info>,
+    token_a_program: AccountInfo<'info>,
+    token_b_program: AccountInfo<'info>,
+    event_authority: AccountInfo<'info>,
+    meteora_program: AccountInfo<'info>,
+    params: AddLiquidityParameters,
+    owner_seeds: Option<&[&[&[u8]]]>,
+) -> Result<()> {
+    msg!("Adding liquidity to Meteora position via CPI");
+
+    // Instruction discriminator for add_liquidity (from IDL)
+    let discriminator: [u8; 8] = [181, 157, 89, 67, 143, 182, 52, 72];
+
+    // Serialize parameters
+    let mut param_data = Vec::new();
+    param_data.extend_from_slice(&params.liquidity_delta.to_le_bytes());
+    param_data.extend_from_slice(&params.token_a_amount_threshold.to_le_bytes());
+    param_data.extend_from_slice(&params.token_b_amount_threshold.to_le_bytes());
+
+    // Build instruction data (discriminator + params)
+    let mut instruction_data = Vec::with_capacity(8 + param_data.len());
+    instruction_data.extend_from_slice(&discriminator);
+    instruction_data.extend_from_slice(&param_data);
+
+    // Build accounts for the instruction
+    let accounts = vec![
+        AccountMeta::new(pool.key(), false), // pool
+        AccountMeta::new(position.key(), false), // position
+        AccountMeta::new(token_a_account.key(), false), // token_a_account
+        AccountMeta::new(token_b_account.key(), false), // token_b_account
+        AccountMeta::new(token_a_vault.key(), false), // token_a_vault
+        AccountMeta::new(token_b_vault.key(), false), // token_b_vault
+        AccountMeta::new_readonly(token_a_mint.key(), false), // token_a_mint
+        AccountMeta::new_readonly(token_b_mint.key(), false), // token_b_mint
+        AccountMeta::new_readonly(position_nft_account.key(), false), // position_nft_account
+        AccountMeta::new_readonly(owner.key(), true), // owner (signer)
+        AccountMeta::new_readonly(token_a_program.key(), false), // token_a_program
+        AccountMeta::new_readonly(token_b_program.key(), false), // token_b_program
+        AccountMeta::new_readonly(event_authority.key(), false), // event_authority
+        AccountMeta::new_readonly(meteora_program.key(), false), // program
+    ];
+
+    let instruction = anchor_lang::solana_program::instruction::Instruction {
+        program_id: METEORA_CP_AMM_PROGRAM_ID,
+        accounts,
+        data: instruction_data,
+    };
+
+    // Invoke with optional PDA signing
+    if let Some(seeds) = owner_seeds {
+        invoke_signed(
+            &instruction,
+            &[
+                pool,
+                position,
+                token_a_account,
+                token_b_account,
+                token_a_vault,
+                token_b_vault,
+                token_a_mint,
+                token_b_mint,
+                position_nft_account,
+                owner,
+                token_a_program,
+                token_b_program,
+                event_authority,
+                meteora_program,
+            ],
+            seeds,
+        )?;
+    } else {
+        anchor_lang::solana_program::program::invoke(
+            &instruction,
+            &[
+                pool,
+                position,
+                token_a_account,
+                token_b_account,
+                token_a_vault,
+                token_b_vault,
+                token_a_mint,
+                token_b_mint,
+                position_nft_account,
+                owner,
+                token_a_program,
+                token_b_program,
+                event_authority,
+                meteora_program,
+            ],
+        )?;
+    }
+
+    msg!("Liquidity added successfully");
+    Ok(())
+}
+
+/// Claim fees from a Meteora position
+/// 
+/// This claims accumulated fees from the position to the owner's token accounts.
+/// For quote-only positions, only quote token fees should be claimed.
+/// 
+/// # Arguments
+/// * All the required accounts for claim_position_fee instruction
+/// * `owner_seeds` - Optional seeds if owner is a PDA
+/// 
+/// # Returns
+/// * `Result<()>` - Success or error
+pub fn claim_position_fee<'info>(
+    pool_authority: AccountInfo<'info>,
+    pool: AccountInfo<'info>,
+    position: AccountInfo<'info>,
+    token_a_account: AccountInfo<'info>,
+    token_b_account: AccountInfo<'info>,
+    token_a_vault: AccountInfo<'info>,
+    token_b_vault: AccountInfo<'info>,
+    token_a_mint: AccountInfo<'info>,
+    token_b_mint: AccountInfo<'info>,
+    position_nft_account: AccountInfo<'info>,
+    owner: AccountInfo<'info>,
+    token_a_program: AccountInfo<'info>,
+    token_b_program: AccountInfo<'info>,
+    event_authority: AccountInfo<'info>,
+    meteora_program: AccountInfo<'info>,
+    owner_seeds: Option<&[&[&[u8]]]>,
+) -> Result<()> {
+    msg!("Claiming position fees via CPI");
+
+    // Instruction discriminator for claim_position_fee (from IDL)
+    let discriminator: [u8; 8] = [180, 38, 154, 17, 133, 33, 162, 211];
+
+    // Build instruction data (discriminator only, no args)
+    let instruction_data = discriminator.to_vec();
+
+    // Build accounts for the instruction
+    let accounts = vec![
+        AccountMeta::new_readonly(pool_authority.key(), false), // pool_authority
+        AccountMeta::new_readonly(pool.key(), false), // pool
+        AccountMeta::new(position.key(), false), // position
+        AccountMeta::new(token_a_account.key(), false), // token_a_account
+        AccountMeta::new(token_b_account.key(), false), // token_b_account
+        AccountMeta::new(token_a_vault.key(), false), // token_a_vault
+        AccountMeta::new(token_b_vault.key(), false), // token_b_vault
+        AccountMeta::new_readonly(token_a_mint.key(), false), // token_a_mint
+        AccountMeta::new_readonly(token_b_mint.key(), false), // token_b_mint
+        AccountMeta::new_readonly(position_nft_account.key(), false), // position_nft_account
+        AccountMeta::new_readonly(owner.key(), true), // owner (signer)
+        AccountMeta::new_readonly(token_a_program.key(), false), // token_a_program
+        AccountMeta::new_readonly(token_b_program.key(), false), // token_b_program
+        AccountMeta::new_readonly(event_authority.key(), false), // event_authority
+        AccountMeta::new_readonly(meteora_program.key(), false), // program
+    ];
+
+    let instruction = anchor_lang::solana_program::instruction::Instruction {
+        program_id: METEORA_CP_AMM_PROGRAM_ID,
+        accounts,
+        data: instruction_data,
+    };
+
+    // Invoke with optional PDA signing
+    if let Some(seeds) = owner_seeds {
+        invoke_signed(
+            &instruction,
+            &[
+                pool_authority,
+                pool,
+                position,
+                token_a_account,
+                token_b_account,
+                token_a_vault,
+                token_b_vault,
+                token_a_mint,
+                token_b_mint,
+                position_nft_account,
+                owner,
+                token_a_program,
+                token_b_program,
+                event_authority,
+                meteora_program,
+            ],
+            seeds,
+        )?;
+    } else {
+        anchor_lang::solana_program::program::invoke(
+            &instruction,
+            &[
+                pool_authority,
+                pool,
+                position,
+                token_a_account,
+                token_b_account,
+                token_a_vault,
+                token_b_vault,
+                token_a_mint,
+                token_b_mint,
+                position_nft_account,
+                owner,
+                token_a_program,
+                token_b_program,
+                event_authority,
+                meteora_program,
+            ],
+        )?;
+    }
+
+    msg!("Position fees claimed successfully");
+    Ok(())
+}

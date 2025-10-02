@@ -58,4 +58,32 @@ pub enum FeeRouterError {
     
     #[msg("Payout below minimum threshold")]
     PayoutBelowMinimum,
+    
+    // Fee Claiming Errors
+    #[msg("No fees available to claim from position")]
+    NoFeesToClaim,
+    
+    #[msg("Base token fees detected during claim (should be quote-only)")]
+    BaseFeesClaimedError,
+    
+    #[msg("Position metadata mismatch with provided accounts")]
+    PositionMetadataMismatch,
+    
+    #[msg("Treasury state mismatch with provided accounts")]
+    TreasuryStateMismatch,
+    
+    #[msg("Claim interval not elapsed - too soon to claim again")]
+    ClaimIntervalNotElapsed,
+    
+    #[msg("Position has no accumulated fees")]
+    NoAccumulatedFees,
+    
+    #[msg("Treasury ATA balance mismatch")]
+    TreasuryBalanceMismatch,
+    
+    #[msg("Failed to transfer claimed fees to treasury")]
+    TreasuryTransferFailed,
+    
+    #[msg("Meteora CPI call failed")]
+    MeteoraCpiFailed,
 }

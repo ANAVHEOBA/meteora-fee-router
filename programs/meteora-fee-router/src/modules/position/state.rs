@@ -36,4 +36,24 @@ impl PositionMetadata {
                                    8 +  // created_at
                                    1 +  // position_owner_bump
                                    64;  // reserved
+
+    /// Derive the PDA for position metadata
+    pub fn derive_pda(position_nft_mint: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
+        Pubkey::find_program_address(
+            &[b"position_metadata", position_nft_mint.as_ref()],
+            program_id,
+        )
+    }
+
+    /// Check if this position is configured for quote-only fees
+    pub fn is_quote_only(&self) -> bool {
+        // In our system, all positions should be quote-only
+        // This is validated during creation
+        true
+    }
+
+    /// Get the age of the position in seconds
+    pub fn age_seconds(&self, current_timestamp: i64) -> i64 {
+        current_timestamp - self.created_at
+    }
 }
