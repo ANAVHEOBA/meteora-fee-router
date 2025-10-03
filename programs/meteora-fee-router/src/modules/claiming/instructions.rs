@@ -91,7 +91,7 @@ pub fn claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
 
     // Step 1 - Claim fees from Meteora position via CPI with error handling
     let vault_key = ctx.accounts.vault.key();
-    let bump = ctx.bumps["position_owner_pda"];
+    let bump = ctx.bumps.position_owner_pda;
     let owner_seeds = &[
         VAULT_SEED,
         vault_key.as_ref(),

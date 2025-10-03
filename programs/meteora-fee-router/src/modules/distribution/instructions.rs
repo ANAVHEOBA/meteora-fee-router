@@ -236,7 +236,7 @@ pub fn process_investor_page(ctx: Context<ProcessInvestorPage>) -> Result<()> {
     streamflow::calculations::validate_distribution(&final_calc, effective_distribution_amount)?;
 
     // Step 6: Execute transfers to investors
-    let treasury_authority_bump = ctx.bumps["treasury_authority"];
+    let treasury_authority_bump = ctx.bumps.treasury_authority;
     let quote_mint_key = ctx.accounts.quote_mint.key();
     let treasury_seeds = &[
         b"treasury_authority",
@@ -328,9 +328,9 @@ pub fn complete_daily_distribution(ctx: Context<CompleteDailyDistribution>) -> R
     msg!("Creator remainder calculation: {} total - {} to investors = {} remainder", 
          total_available, total_investor_payouts, creator_remainder);
 
-    // Step 2: Transfer creator remainder (if any)
+    // Step 2: Transfer remainder to creator
     if creator_remainder > 0 {
-        let treasury_authority_bump = ctx.bumps["treasury_authority"];
+        let treasury_authority_bump = ctx.bumps.treasury_authority;
         let quote_mint_key = ctx.accounts.quote_mint.key();
         let treasury_seeds = &[
             b"treasury_authority",
