@@ -1,0 +1,100 @@
+{
+  "version": "0.1.0",
+  "name": "meteora_fee_router",
+  "instructions": [
+    {
+      "name": "initializePolicy",
+      "accounts": [
+        {"name": "authority", "isMut": true, "isSigner": true},
+        {"name": "quoteMint", "isMut": false, "isSigner": false},
+        {"name": "policyState", "isMut": true, "isSigner": false},
+        {"name": "systemProgram", "isMut": false, "isSigner": false}
+      ],
+      "args": [
+        {"name": "investorFeeShareBps", "type": "u64"},
+        {"name": "dailyCapLamports", "type": "u64"},
+        {"name": "minPayoutLamports", "type": "u64"},
+        {"name": "y0TotalAllocation", "type": "u64"}
+      ]
+    },
+    {
+      "name": "initializePosition",
+      "accounts": [
+        {"name": "authority", "isMut": true, "isSigner": true},
+        {"name": "positionOwnerPda", "isMut": true, "isSigner": false},
+        {"name": "position", "isMut": true, "isSigner": true},
+        {"name": "pool", "isMut": false, "isSigner": false},
+        {"name": "quoteMint", "isMut": false, "isSigner": false}
+      ],
+      "args": []
+    },
+    {
+      "name": "claimFees",
+      "accounts": [
+        {"name": "authority", "isMut": true, "isSigner": true},
+        {"name": "position", "isMut": true, "isSigner": false},
+        {"name": "treasuryAta", "isMut": true, "isSigner": false}
+      ],
+      "args": []
+    },
+    {
+      "name": "startDailyDistribution",
+      "accounts": [
+        {"name": "authority", "isMut": true, "isSigner": true},
+        {"name": "dailyDistributionState", "isMut": true, "isSigner": false}
+      ],
+      "args": [{"name": "distributionDay", "type": "i64"}]
+    },
+    {
+      "name": "processInvestorPage",
+      "accounts": [
+        {"name": "authority", "isMut": true, "isSigner": true},
+        {"name": "dailyDistributionState", "isMut": true, "isSigner": false}
+      ],
+      "args": []
+    },
+    {
+      "name": "completeDailyDistribution",
+      "accounts": [
+        {"name": "authority", "isMut": true, "isSigner": true},
+        {"name": "creatorAta", "isMut": true, "isSigner": false}
+      ],
+      "args": []
+    }
+  ],
+  "events": [
+    {
+      "name": "HonoraryPositionInitialized",
+      "fields": [
+        {"name": "position", "type": "publicKey"},
+        {"name": "quoteMint", "type": "publicKey"}
+      ]
+    },
+    {
+      "name": "QuoteFeesClaimed", 
+      "fields": [
+        {"name": "amount", "type": "u64"},
+        {"name": "timestamp", "type": "i64"}
+      ]
+    },
+    {
+      "name": "InvestorsProcessed",
+      "fields": [
+        {"name": "investorsInPage", "type": "u32"},
+        {"name": "amountDistributedInPage", "type": "u64"}
+      ]
+    },
+    {
+      "name": "CreatorPayoutCompleted",
+      "fields": [
+        {"name": "creatorRemainder", "type": "u64"},
+        {"name": "totalDistributedAmount", "type": "u64"}
+      ]
+    }
+  ],
+  "errors": [
+    {"code": 6000, "name": "BaseFeeDetected", "msg": "Base fees detected - only quote fees allowed"},
+    {"code": 6001, "name": "TooSoonToDistribute", "msg": "24 hour period not elapsed"},
+    {"code": 6002, "name": "DailyCapExceeded", "msg": "Daily cap exceeded"}
+  ]
+}
