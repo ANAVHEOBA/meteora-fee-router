@@ -15,8 +15,8 @@ use modules::position::instructions;
 use modules::claiming::contexts::{InitializeTreasury, ClaimFees};
 use modules::claiming::contexts::{__client_accounts_initialize_treasury, __client_accounts_claim_fees};
 use modules::claiming::instructions as claiming_instructions;
-use modules::distribution::contexts::{InitializeGlobalDistribution, StartDailyDistribution, ProcessInvestorPage, CompleteDailyDistribution};
-use modules::distribution::contexts::{__client_accounts_initialize_global_distribution, __client_accounts_start_daily_distribution, __client_accounts_process_investor_page, __client_accounts_complete_daily_distribution};
+use modules::distribution::contexts::{InitializePolicy, InitializeGlobalDistribution, StartDailyDistribution, ProcessInvestorPage, CompleteDailyDistribution};
+use modules::distribution::contexts::{__client_accounts_initialize_policy, __client_accounts_initialize_global_distribution, __client_accounts_start_daily_distribution, __client_accounts_process_investor_page, __client_accounts_complete_daily_distribution};
 use modules::distribution::instructions as distribution_instructions;
 
 #[program]
@@ -32,7 +32,6 @@ pub mod meteora_fee_router {
     pub fn initialize_treasury(ctx: Context<InitializeTreasury>, quote_mint: Pubkey) -> Result<()> {
         claiming_instructions::initialize_treasury(ctx, quote_mint)
     }
-
     /// Claim fees from the honorary position
     pub fn claim_fees(ctx: Context<ClaimFees>) -> Result<()> {
         claiming_instructions::claim_fees(ctx)
@@ -41,6 +40,23 @@ pub mod meteora_fee_router {
     /// Initialize global distribution state
     pub fn initialize_global_distribution(ctx: Context<InitializeGlobalDistribution>, quote_mint: Pubkey) -> Result<()> {
         distribution_instructions::initialize_global_distribution(ctx, quote_mint)
+    }
+
+    /// Initialize policy parameters
+    pub fn initialize_policy(
+        ctx: Context<InitializePolicy>,
+        investor_fee_share_bps: u64,
+        daily_cap_lamports: u64,
+        min_payout_lamports: u64,
+        y0_total_allocation: u64,
+    ) -> Result<()> {
+        distribution_instructions::initialize_policy(
+            ctx,
+            investor_fee_share_bps,
+            daily_cap_lamports,
+            min_payout_lamports,
+            y0_total_allocation,
+        )
     }
 
     /// Start a new daily distribution (24-hour crank)

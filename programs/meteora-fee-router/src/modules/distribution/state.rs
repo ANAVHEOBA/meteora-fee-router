@@ -1,12 +1,69 @@
 use anchor_lang::prelude::*;
 
-/// Daily distribution state account
-/// 
-/// Tracks the state of fee distribution for a specific day.
-/// One account per day, allowing for pagination across multiple transactions.
+/// Policy configuration for fee distribution
+#[account]
+pub struct PolicyState {
+    /// Quote mint this policy applies to
+    pub quote_mint: Pubkey,
+    
+    /// Maximum investor share in basis points (0-10000)
+    pub investor_fee_share_bps: u64,
+    
+    /// Daily distribution cap in lamports (0 = no cap)
+    pub daily_cap_lamports: u64,
+    
+    /// Minimum payout threshold in lamports
+    pub min_payout_lamports: u64,
+    
+    /// Total investor allocation at TGE (Y0)
+    pub y0_total_allocation: u64,
+    
+    /// Authority that can update this policy
+    pub policy_authority: Pubkey,
+    
+    /// Reserved for future use
+    pub reserved: [u8; 64],
+}
+
+impl PolicyState {
+    pub const INIT_SPACE: usize = 8 +   // discriminator
+                                   32 +  // quote_mint
+                                   8 +   // investor_fee_share_bps
+                                   8 +   // daily_cap_lamports
+                                   8 +   // min_payout_lamports
+                                   8 +   // y0_total_allocation
+                                   32 +  // policy_authority
+                                   64;   // reserved
+
+    /// Derive the PDA for policy state
+    pub fn derive_pda(quote_mint: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
+        Pubkey::find_program_address(
+            &[
+                b"policy",
+                quote_mint.as_ref(),
+            ],
+            program_id,
+        )
+    }
+
+    /// Validate policy parameters
+    pub fn validate(&self) -> Result<()> {
+        require!(
+            self.investor_fee_share_bps <= 10000,
+            anchor_lang::error::ErrorCode::ConstraintRaw
+        );
+        require!(
+            self.y0_total_allocation > 0,
+            anchor_lang::error::ErrorCode::ConstraintRaw
+        );
+        Ok(())
+    }
+}
+
+/// Daily distribution state to track progress within a 24-hour period
 #[account]
 pub struct DailyDistributionState {
-    /// The day this distribution represents (Unix timestamp of day start)
+    /// The distribution day (Unix timestamp of day start)
     pub distribution_day: i64,
     
     /// Quote mint being distributed
@@ -57,8 +114,17 @@ pub struct DailyDistributionState {
     /// Investor fee share in basis points (max share for investors)
     pub investor_fee_share_bps: u64,
     
+    /// Hash of the last processed page (for idempotency)
+    pub last_page_hash: [u8; 32],
+    
+    /// Number of pages processed so far
+    pub pages_processed: u32,
+    
+    /// Number of failed payouts (for retry tracking)
+    pub failed_payouts_count: u32,
+    
     /// Reserved for future use
-    pub reserved: [u8; 32],
+    pub reserved: [u8; 20],
 }
 
 impl DailyDistributionState {
@@ -79,7 +145,10 @@ impl DailyDistributionState {
                                    8 +   // min_payout_threshold
                                    8 +   // initial_total_deposit
                                    8 +   // investor_fee_share_bps
-                                   32;   // reserved
+                                   32 +  // last_page_hash
+                                   4 +   // pages_processed
+                                   4 +   // failed_payouts_count
+                                   20;   // reserved
 
     /// Derive the PDA for daily distribution state
     pub fn derive_pda(distribution_day: i64, quote_mint: &Pubkey, program_id: &Pubkey) -> (Pubkey, u8) {
@@ -146,6 +215,55 @@ impl DailyDistributionState {
     /// Get effective distribution amount (including carried over dust)
     pub fn get_effective_distribution_amount(&self) -> u64 {
         self.total_amount_to_distribute.saturating_add(self.dust_carried_over)
+    }
+
+    /// Calculate hash for a page of investor accounts (for idempotency)
+    pub fn calculate_page_hash(investor_accounts: &[Pubkey]) -> [u8; 32] {
+        use anchor_lang::solana_program::hash::hash;
+        
+        let mut data = Vec::new();
+        for account in investor_accounts {
+            data.extend_from_slice(account.as_ref());
+        }
+        
+        let hash_result = hash(&data);
+        hash_result.to_bytes()
+    }
+
+    /// Check if this page has already been processed (idempotency check)
+    pub fn is_page_already_processed(&self, page_hash: &[u8; 32]) -> bool {
+        self.last_page_hash == *page_hash
+    }
+
+    /// Update page processing state
+    pub fn update_page_state(&mut self, page_hash: [u8; 32], investors_in_page: u32, amount_distributed: u64) {
+        self.last_page_hash = page_hash;
+        self.pages_processed = self.pages_processed.saturating_add(1);
+        self.update_progress(investors_in_page, amount_distributed, self.current_cursor + investors_in_page);
+    }
+
+    /// Track failed payouts for retry purposes
+    pub fn add_failed_payouts(&mut self, failed_count: u32) {
+        self.failed_payouts_count = self.failed_payouts_count.saturating_add(failed_count);
+    }
+
+    /// Check if there were any failed payouts that might need retry
+    pub fn has_failed_payouts(&self) -> bool {
+        self.failed_payouts_count > 0
+    }
+
+    /// Validate page for retry safety
+    pub fn validate_page_for_retry(&self, investor_accounts: &[Pubkey]) -> Result<()> {
+        // Calculate hash for this page
+        let page_hash = Self::calculate_page_hash(investor_accounts);
+        
+        // If this exact page was already processed, it's a retry attempt
+        if self.is_page_already_processed(&page_hash) {
+            msg!("Page already processed - idempotency violation detected");
+            return Err(anchor_lang::error::ErrorCode::ConstraintRaw.into());
+        }
+        
+        Ok(())
     }
 }
 

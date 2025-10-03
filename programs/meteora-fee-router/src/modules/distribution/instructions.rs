@@ -2,10 +2,51 @@ use anchor_lang::prelude::*;
 use anchor_spl::token;
 use crate::modules::distribution::contexts::*;
 use crate::modules::distribution::events::*;
-use crate::modules::distribution::state::{DailyDistributionState, GlobalDistributionState};
+use crate::modules::distribution::state::{DailyDistributionState, GlobalDistributionState, PolicyState};
 use crate::integrations::streamflow;
 use crate::shared::constants::*;
 use crate::errors::FeeRouterError;
+
+/// Initialize the policy state
+/// 
+/// This creates the policy configuration that governs fee distribution.
+/// Only needs to be called once per quote mint.
+/// 
+/// # Arguments
+/// * `ctx` - The context containing all required accounts
+/// * `investor_fee_share_bps` - Maximum investor share (0-10000)
+/// * `daily_cap_lamports` - Daily distribution cap (0 = no cap)
+/// * `min_payout_lamports` - Minimum payout threshold
+/// * `y0_total_allocation` - Total investor allocation at TGE
+/// 
+/// # Returns
+/// * `Result<()>` - Success or error
+pub fn initialize_policy(
+    ctx: Context<InitializePolicy>,
+    investor_fee_share_bps: u64,
+    daily_cap_lamports: u64,
+    min_payout_lamports: u64,
+    y0_total_allocation: u64,
+) -> Result<()> {
+    msg!("Initializing policy for quote mint: {}", ctx.accounts.quote_mint.key());
+
+    // Initialize policy state
+    ctx.accounts.policy_state.set_inner(PolicyState {
+        quote_mint: ctx.accounts.quote_mint.key(),
+        investor_fee_share_bps,
+        daily_cap_lamports,
+        min_payout_lamports,
+        y0_total_allocation,
+        policy_authority: ctx.accounts.authority.key(),
+        reserved: [0; 64],
+    });
+
+    // Validate policy parameters
+    ctx.accounts.policy_state.validate()?;
+
+    msg!("✅ Policy initialized successfully");
+    Ok(())
+}
 
 /// Initialize the global distribution state
 /// 
@@ -109,7 +150,10 @@ pub fn start_daily_distribution(
         min_payout_threshold: DEFAULT_MIN_PAYOUT_LAMPORTS,
         initial_total_deposit: 1_000_000_000, // TODO: Get from config/state
         investor_fee_share_bps: DEFAULT_INVESTOR_FEE_SHARE_BPS,
-        reserved: [0; 32],
+        last_page_hash: [0; 32], // No pages processed yet
+        pages_processed: 0,
+        failed_payouts_count: 0,
+        reserved: [0; 20],
     });
 
     // Emit event
@@ -156,7 +200,11 @@ pub fn process_investor_page(ctx: Context<ProcessInvestorPage>) -> Result<()> {
         FeeRouterError::NoInvestors
     );
 
-    // Step 1: Read Streamflow stream data for this page of investors
+    // Step 1: Idempotency check - validate this page hasn't been processed
+    let investor_keys: Vec<Pubkey> = remaining_accounts.iter().map(|acc| acc.key()).collect();
+    ctx.accounts.daily_distribution_state.validate_page_for_retry(&investor_keys)?;
+
+    // Step 2: Read Streamflow stream data for this page of investors
     let (investor_data, total_locked) = streamflow::cpi::calculate_locked_amounts(
         remaining_accounts,
         clock.unix_timestamp as u64,
@@ -166,7 +214,7 @@ pub fn process_investor_page(ctx: Context<ProcessInvestorPage>) -> Result<()> {
     msg!("Found {} investors with {} total locked tokens", 
          investor_data.len(), total_locked);
 
-    // Step 2: Calculate distribution using Section 4 formulas
+    // Step 3: Calculate distribution using Section 4 formulas
     let effective_distribution_amount = ctx.accounts.daily_distribution_state.get_effective_distribution_amount();
     
     let distribution_calc = streamflow::calculations::calculate_distribution(
@@ -178,16 +226,16 @@ pub fn process_investor_page(ctx: Context<ProcessInvestorPage>) -> Result<()> {
         ctx.accounts.daily_distribution_state.min_payout_threshold,
     )?;
 
-    // Step 3: Apply daily cap
+    // Step 4: Apply daily cap
     let final_calc = streamflow::calculations::apply_daily_cap(
         distribution_calc,
         ctx.accounts.daily_distribution_state.daily_cap_remaining,
     );
 
-    // Step 4: Validate calculation
+    // Step 5: Validate calculation
     streamflow::calculations::validate_distribution(&final_calc, effective_distribution_amount)?;
 
-    // Step 5: Execute transfers to investors
+    // Step 6: Execute transfers to investors
     let treasury_authority_bump = ctx.bumps["treasury_authority"];
     let quote_mint_key = ctx.accounts.quote_mint.key();
     let treasury_seeds = &[
@@ -195,7 +243,7 @@ pub fn process_investor_page(ctx: Context<ProcessInvestorPage>) -> Result<()> {
         quote_mint_key.as_ref(),
         &[treasury_authority_bump],
     ];
-    let signer_seeds = &[&treasury_seeds[..]];
+    let _signer_seeds = &[&treasury_seeds[..]];
 
     let mut actual_distributed = 0u64;
     let mut investors_processed = 0u32;
@@ -213,12 +261,12 @@ pub fn process_investor_page(ctx: Context<ProcessInvestorPage>) -> Result<()> {
         }
     }
 
-    // Step 6: Update state
-    let new_cursor = ctx.accounts.daily_distribution_state.current_cursor + investors_processed;
-    ctx.accounts.daily_distribution_state.update_progress(
+    // Step 7: Update state with idempotency tracking
+    let page_hash = DailyDistributionState::calculate_page_hash(&investor_keys);
+    ctx.accounts.daily_distribution_state.update_page_state(
+        page_hash,
         investors_processed,
-        actual_distributed,
-        new_cursor
+        actual_distributed
     );
 
     // Update daily cap
@@ -229,13 +277,13 @@ pub fn process_investor_page(ctx: Context<ProcessInvestorPage>) -> Result<()> {
 
     let is_final_page = !ctx.accounts.daily_distribution_state.has_more_investors();
 
-    // Step 7: Emit event
+    // Step 8: Emit event
     emit!(InvestorsProcessed {
         distribution_day: ctx.accounts.daily_distribution_state.distribution_day,
         quote_mint: ctx.accounts.quote_mint.key(),
         investors_in_page: investors_processed,
         amount_distributed_in_page: actual_distributed,
-        new_cursor,
+        new_cursor: ctx.accounts.daily_distribution_state.current_cursor,
         total_investors_processed: ctx.accounts.daily_distribution_state.investors_processed,
         total_amount_distributed: ctx.accounts.daily_distribution_state.amount_distributed,
         is_final_page,

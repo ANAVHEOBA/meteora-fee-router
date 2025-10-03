@@ -1,7 +1,31 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{Mint, TokenAccount, Token};
-use crate::modules::distribution::state::{DailyDistributionState, GlobalDistributionState};
+use anchor_spl::token::{Mint, Token, TokenAccount};
+use crate::modules::distribution::state::{DailyDistributionState, GlobalDistributionState, PolicyState};
 use crate::modules::claiming::state::TreasuryState;
+
+/// Accounts required to initialize policy state
+#[derive(Accounts)]
+pub struct InitializePolicy<'info> {
+    /// The authority initializing the policy (pays for creation)
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    /// Quote mint this policy applies to
+    pub quote_mint: Account<'info, Mint>,
+
+    /// Policy state PDA to create
+    #[account(
+        init,
+        payer = authority,
+        space = PolicyState::INIT_SPACE,
+        seeds = [b"policy", quote_mint.key().as_ref()],
+        bump,
+    )]
+    pub policy_state: Account<'info, PolicyState>,
+
+    /// System program
+    pub system_program: Program<'info, System>,
+}
 
 /// Accounts required to initialize global distribution state
 #[derive(Accounts)]
