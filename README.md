@@ -3,9 +3,10 @@
 **A Complete, Enterprise-Grade DeFi Fee Distribution Protocol**
 
 [![Solana](https://img.shields.io/badge/Solana-9945FF?style=for-the-badge&logo=solana&logoColor=white)](https://solana.com/)
-[![Anchor](https://img.shields.io/badge/Anchor-0.28.0-blue?style=for-the-badge)](https://anchor-lang.com/)
+[![Anchor](https://img.shields.io/badge/Anchor-0.30.1-blue?style=for-the-badge)](https://anchor-lang.com/)
 [![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![Tests](https://img.shields.io/badge/Tests-100%2B-green?style=for-the-badge)](./tests/)
+[![Deployed](https://img.shields.io/badge/Deployed-Devnet-success?style=for-the-badge)](https://explorer.solana.com/address/F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg?cluster=devnet)
 
 > **🏆 LEGENDARY ACHIEVEMENT: 12/12 Sections Complete with Full Test Suite**
 
@@ -15,6 +16,7 @@
 - [Features](#features)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
+- [Build Instructions](#build-instructions)
 - [Installation](#installation)
 - [Usage](#usage)
 - [Testing](#testing)
@@ -132,8 +134,8 @@ src/
 git clone https://github.com/ANAVHEOBA/meteora-fee-router.git
 cd meteora-fee-router
 
-# Build the program
-anchor build
+# Build the program (see Build Instructions section)
+./build.sh
 
 # Run tests
 cargo test
@@ -141,6 +143,110 @@ cargo test
 # Run integration tests
 cargo test --test integration
 ```
+
+## 🔧 Build Instructions
+
+This project uses a **custom IDL generator** to work around compatibility issues with Anchor's built-in IDL generation.
+
+### Why Custom IDL Generation?
+
+The standard `anchor build` command fails due to a `proc-macro2` compatibility issue between Anchor 0.30.1 and newer Rust versions. Our solution:
+
+1. **Disables Anchor's IDL generation** (`skip-idl = true` in `Anchor.toml`)
+2. **Uses a custom Python generator** that parses the Rust code directly
+3. **Generates a complete, standards-compliant IDL** with all instructions and accounts
+
+### Build Process
+
+```bash
+# Option 1: Use the build script (recommended)
+./build.sh
+
+# Option 2: Manual build
+anchor build --no-idl           # Builds program binary only
+python3 generate_idl.py        # Generates IDL file
+```
+
+### Expected Build Output
+
+When running `anchor build --no-idl`, you should see:
+
+```bash
+warning: unused variable: `clock`
+  --> programs/meteora-fee-router/src/modules/distribution/instructions.rs:75:9
+   |
+75 |     let clock = Clock::get()?;
+   |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_clock`
+
+warning: unused variable: `quote_mint`
+   --> programs/meteora-fee-router/src/integrations/streamflow/cpi.rs:100:5
+    |
+100 |     quote_mint: &Pubkey,
+    |     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_quote_mint`
+
+warning: `meteora-fee-router` (lib) generated 2 warnings
+    Finished `release` profile [optimized] target(s) in 1.90s
+```
+
+✅ **These warnings are normal and expected** - they indicate unused variables in development code that don't affect program functionality.
+
+### Generated Files
+
+- **Program Binary**: `target/deploy/meteora_fee_router.so`
+- **IDL File**: `target/idl/meteora_fee_router.json` (447+ lines)
+- **Keypair**: `target/deploy/meteora_fee_router-keypair.json`
+
+### IDL Generator Features
+
+The custom generator (`generate_idl.py`) creates a comprehensive IDL with:
+
+- ✅ **8 Instructions** with proper account structures
+- ✅ **5 Account Types** (PolicyState, Treasury, etc.)
+- ✅ **Typed Parameters** (u64, i64, publicKey, etc.)
+- ✅ **Metadata** including program address
+- ✅ **Standards Compliance** for all Solana tooling
+
+### Deployment
+
+```bash
+# Deploy to devnet
+solana program deploy target/deploy/meteora_fee_router.so
+
+# Verify deployment
+solana program show F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg
+```
+
+## 🚀 Live Deployment
+
+**✅ DEPLOYED TO SOLANA DEVNET**
+
+- **Program ID**: `F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg`
+- **Network**: Devnet (`https://api.devnet.solana.com`)
+- **Transaction**: `5wHTW3ohJAv2JxtXtP1KsHBKSwpicQ63czAjAijoiPdd3kNpc5HpJxPjvWaRJXHYbXGkPoFhzLZ2da7UEnRtTyhW`
+- **Explorer**: [View on Solana Explorer](https://explorer.solana.com/address/F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg?cluster=devnet)
+
+### Integration Details
+
+For frontend/client integration:
+
+```typescript
+// Program ID for devnet
+const PROGRAM_ID = new PublicKey("F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg");
+
+// Use the generated IDL
+import idl from "./target/idl/meteora_fee_router.json";
+```
+
+### Available Instructions
+
+1. **`initialize_policy`** - Configure distribution parameters
+2. **`initialize_position`** - Create honorary LP position  
+3. **`initialize_treasury`** - Set up fee treasury
+4. **`claim_fees`** - Claim fees from positions
+5. **`initialize_global_distribution`** - Set up distribution system
+6. **`start_daily_distribution`** - Begin 24h distribution cycle
+7. **`process_investor_page`** - Process batches of investors
+8. **`complete_daily_distribution`** - Finalize distribution with creator payout
 
 ## 📦 Installation
 

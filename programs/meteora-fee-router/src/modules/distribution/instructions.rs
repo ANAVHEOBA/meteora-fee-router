@@ -75,7 +75,7 @@ pub fn initialize_global_distribution(
     let clock = Clock::get()?;
     ctx.accounts.global_distribution_state.set_inner(GlobalDistributionState {
         quote_mint,
-        last_distribution_day: 0, // No distributions yet
+        last_distribution_timestamp: 0, // No distributions yet
         total_distributions: 0,
         total_amount_distributed: 0,
         reserved: [0; 64],
@@ -114,7 +114,7 @@ pub fn start_daily_distribution(
     // Check if 24 hours have passed since last distribution
     require!(
         DailyDistributionState::can_start_new_distribution(
-            ctx.accounts.global_distribution_state.last_distribution_day,
+            ctx.accounts.global_distribution_state.last_distribution_timestamp,
             clock.unix_timestamp
         ),
         FeeRouterError::TooSoonToDistribute
@@ -373,7 +373,7 @@ pub fn complete_daily_distribution(ctx: Context<CompleteDailyDistribution>) -> R
 
     // Step 4: Update global distribution state
     ctx.accounts.global_distribution_state.update_after_distribution(
-        ctx.accounts.daily_distribution_state.distribution_day,
+        clock.unix_timestamp, // Use current timestamp instead of day
         total_available // Include full amount (investors + creator)
     );
 
@@ -388,7 +388,7 @@ pub fn complete_daily_distribution(ctx: Context<CompleteDailyDistribution>) -> R
 
     emit!(GlobalDistributionUpdated {
         quote_mint: ctx.accounts.quote_mint.key(),
-        last_distribution_day: ctx.accounts.global_distribution_state.last_distribution_day,
+        last_distribution_day: ctx.accounts.global_distribution_state.last_distribution_timestamp,
         total_distributions: ctx.accounts.global_distribution_state.total_distributions,
         total_amount_distributed: ctx.accounts.global_distribution_state.total_amount_distributed,
         timestamp: clock.unix_timestamp,

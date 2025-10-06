@@ -2,7 +2,7 @@
 
 // PDA seeds
 pub const VAULT_SEED: &[u8] = b"vault";
-pub const POSITION_OWNER_SEED: &[u8] = b"position_owner";
+pub const POSITION_OWNER_SEED: &[u8] = b"investor_fee_pos_owner";
 pub const POLICY_SEED: &[u8] = b"policy";
 pub const TREASURY_SEED: &[u8] = b"treasury";
 

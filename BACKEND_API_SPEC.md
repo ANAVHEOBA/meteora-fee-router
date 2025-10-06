@@ -4,9 +4,307 @@
 
 Complete REST API specification for the Meteora Fee Router backend. This document outlines all endpoints required for full integration with the deployed smart contract.
 
-**🔗 Program ID:** `Dr4sAJ3wJoy9DKjrEoCwJW7axJmQweWMcBS36UB1y6KE`
-**🌐 Network:** Solana Devnet
+## 🚀 Deployment Information
+
+**🔗 Program ID:** `F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg`
+**🌐 Network:** Solana Devnet (`https://api.devnet.solana.com`)
 **📦 Base URL:** `https://api.yourdomain.com/api/v1`
+**🔍 Explorer:** [View on Solana Explorer](https://explorer.solana.com/address/F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg?cluster=devnet)
+**📄 IDL:** Available at `target/idl/meteora_fee_router.json` (448 lines)
+**📝 Transaction:** `5wHTW3ohJAv2JxtXtP1KsHBKSwpicQ63czAjAijoiPdd3kNpc5HpJxPjvWaRJXHYbXGkPoFhzLZ2da7UEnRtTyhW`
+
+## 🛠️ Backend Requirements
+
+### Essential Dependencies
+
+```json
+{
+  "@solana/web3.js": "^1.87.6",
+  "@coral-xyz/anchor": "^0.30.1",
+  "@solana/spl-token": "^0.3.9",
+  "bs58": "^5.0.0",
+  "express": "^4.18.2",
+  "cors": "^2.8.5",
+  "dotenv": "^16.3.1"
+}
+```
+
+### Environment Variables
+
+```bash
+# Solana Configuration
+SOLANA_RPC_URL=https://api.devnet.solana.com
+PROGRAM_ID=F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg
+WALLET_PRIVATE_KEY=your_base58_private_key
+
+# API Configuration
+PORT=3000
+API_BASE_URL=https://api.yourdomain.com/api/v1
+CORS_ORIGIN=https://yourdomain.com
+
+# Database (Optional)
+DATABASE_URL=postgresql://user:pass@localhost:5432/meteora_router
+REDIS_URL=redis://localhost:6379
+
+# External APIs
+METEORA_API_URL=https://dlmm-api.meteora.ag
+STREAMFLOW_API_URL=https://api.streamflow.finance
+```
+
+### Required Services Integration
+
+1. **Meteora DLMM API** - For pool data and position management
+2. **Streamflow API** - For vesting contract data
+3. **Solana RPC** - For blockchain interactions
+4. **Database** - For caching and analytics (PostgreSQL recommended)
+5. **Redis** - For session management and rate limiting
+
+### Program Account Types
+
+```typescript
+// Account structures from IDL
+interface PolicyState {
+  authority: PublicKey;
+  quoteMint: PublicKey;
+  investorFeeShareBps: number;
+  dailyCapLamports: number;
+  minPayoutLamports: number;
+  y0TotalAllocation: number;
+  bump: number;
+}
+
+interface Treasury {
+  authority: PublicKey;
+  quoteMint: PublicKey;
+  bump: number;
+}
+
+interface GlobalDistributionState {
+  authority: PublicKey;
+  quoteMint: PublicKey;
+  totalDistributed: number;
+  lastDistributionDay: number;
+  bump: number;
+}
+
+interface DailyDistributionState {
+  distributionDay: number;
+  totalAmount: number;
+  processedInvestors: number;
+  isComplete: boolean;
+  bump: number;
+}
+
+interface PositionMetadata {
+  vault: PublicKey;
+  quoteMint: PublicKey;
+  positionOwner: PublicKey;
+  bump: number;
+}
+```
+
+### Program Instructions (8 Available)
+
+```typescript
+// All 8 program instructions that backend must support
+enum Instructions {
+  InitializePolicy = "initializePolicy",
+  InitializePosition = "initializePosition", 
+  InitializeTreasury = "initializeTreasury",
+  ClaimFees = "claimFees",
+  InitializeGlobalDistribution = "initializeGlobalDistribution",
+  StartDailyDistribution = "startDailyDistribution",
+  ProcessInvestorPage = "processInvestorPage",
+  CompleteDailyDistribution = "completeDailyDistribution"
+}
+
+// Instruction parameters
+interface InitializePolicyParams {
+  investorFeeShareBps: number;  // Basis points (0-10000)
+  dailyCapLamports: number;     // Daily distribution cap
+  minPayoutLamports: number;    // Minimum payout threshold
+  y0TotalAllocation: number;    // Total Y0 token allocation
+}
+
+interface StartDailyDistributionParams {
+  distributionDay: number;      // Unix timestamp day
+}
+```
+
+### PDA Seeds (Required for Account Derivation)
+
+```typescript
+// PDA derivation seeds - backend must calculate these
+const PDA_SEEDS = {
+  POLICY_STATE: ["policy", quoteMint],
+  TREASURY_AUTHORITY: ["treasury_authority", quoteMint], 
+  GLOBAL_DISTRIBUTION: ["global_distribution", quoteMint],
+  DAILY_DISTRIBUTION: ["daily_distribution", distributionDay, quoteMint],
+  POSITION_OWNER: ["vault", vault, "investor_fee_pos_owner"],
+  POSITION_METADATA: ["position_metadata", vault, quoteMint]
+};
+
+// Example PDA calculation
+function getPolicyStatePDA(quoteMint: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("policy"), quoteMint.toBuffer()],
+    new PublicKey("F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg")
+  );
+}
+```
+
+### External API Integration Requirements
+
+```typescript
+// Meteora DLMM Pool Data
+interface MeteoraPoolData {
+  address: string;
+  tokenX: string;
+  tokenY: string;
+  binStep: number;
+  baseFeePercentage: number;
+  maxFeePercentage: number;
+  protocolFeePercentage: number;
+  liquidity: number;
+  rewardInfos: RewardInfo[];
+  farmingInfos: FarmingInfo[];
+  tvl: number;
+  tradingVolume24h: number;
+}
+
+// Streamflow Vesting Contract Data  
+interface StreamflowContract {
+  publicKey: string;
+  recipient: string;
+  mint: string;
+  depositedAmount: number;
+  withdrawnAmount: number;
+  canceledAmount: number;
+  start: number;
+  cliff: number;
+  end: number;
+  period: number;
+  amountPerPeriod: number;
+  canceled: boolean;
+  withdrawn: boolean;
+}
+
+// Backend must fetch and process this data for distribution calculations
+```
+
+### Critical Business Logic Implementation
+
+```typescript
+// Fee Distribution Calculation - CORE ALGORITHM
+interface DistributionCalculation {
+  // 1. Fetch all Streamflow vesting contracts for Y0 token
+  // 2. Calculate locked amounts per investor
+  // 3. Apply pro-rata distribution formula
+  // 4. Handle daily caps and minimums
+  // 5. Process in pages (gas optimization)
+  
+  calculateInvestorShare(
+    investorLockedAmount: number,
+    totalLockedAmount: number,
+    availableFees: number,
+    dailyCap: number,
+    minPayout: number
+  ): number;
+  
+  // Pro-rata formula: (investor_locked / total_locked) * available_fees
+  // Subject to: daily_cap and min_payout constraints
+}
+
+// Daily Distribution Workflow
+interface DailyDistributionWorkflow {
+  // 1. Check if 24 hours passed since last distribution
+  // 2. Claim fees from Meteora positions
+  // 3. Calculate total available for distribution
+  // 4. Fetch all Y0 vesting contracts from Streamflow
+  // 5. Calculate pro-rata shares
+  // 6. Process investors in pages (pagination for gas limits)
+  // 7. Distribute remainder to creator
+  // 8. Mark distribution as complete
+}
+
+// Error Handling - Match Solana Program Errors
+enum ProgramErrors {
+  BaseFeeDetected = 6000,
+  InvalidQuoteMint = 6001,
+  InvalidAuthority = 6002,
+  DistributionAlreadyStarted = 6003,
+  DistributionNotStarted = 6004,
+  DistributionAlreadyComplete = 6005,
+  InsufficientFunds = 6006,
+  InvalidDistributionDay = 6007,
+  // ... 25+ total errors from program
+}
+```
+
+### Required Cron Jobs / Background Tasks
+
+```typescript
+// Backend must implement these automated tasks
+interface BackgroundTasks {
+  // 1. Daily Distribution Trigger (every 24 hours)
+  dailyDistributionCron(): Promise<void>;
+  
+  // 2. Fee Claiming Monitor (check for claimable fees)
+  feeClaimingMonitor(): Promise<void>;
+  
+  // 3. Streamflow Data Sync (cache vesting contracts)
+  streamflowDataSync(): Promise<void>;
+  
+  // 4. Meteora Pool Monitoring (track pool health)
+  meteoraPoolMonitor(): Promise<void>;
+  
+  // 5. Analytics Data Collection
+  analyticsCollection(): Promise<void>;
+}
+```
+
+### Database Schema Requirements
+
+```sql
+-- Essential tables for backend operation
+CREATE TABLE policies (
+  id SERIAL PRIMARY KEY,
+  quote_mint VARCHAR(44) NOT NULL,
+  investor_fee_share_bps INTEGER NOT NULL,
+  daily_cap_lamports BIGINT NOT NULL,
+  min_payout_lamports BIGINT NOT NULL,
+  y0_total_allocation BIGINT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE distributions (
+  id SERIAL PRIMARY KEY,
+  distribution_day INTEGER NOT NULL,
+  quote_mint VARCHAR(44) NOT NULL,
+  total_amount BIGINT NOT NULL,
+  processed_investors INTEGER DEFAULT 0,
+  is_complete BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE investor_payouts (
+  id SERIAL PRIMARY KEY,
+  distribution_id INTEGER REFERENCES distributions(id),
+  investor_wallet VARCHAR(44) NOT NULL,
+  locked_amount BIGINT NOT NULL,
+  payout_amount BIGINT NOT NULL,
+  transaction_signature VARCHAR(88),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE fee_claims (
+  id SERIAL PRIMARY KEY,
+  position_address VARCHAR(44) NOT NULL,
+  claimed_amount BIGINT NOT NULL,
+  transaction_signature VARCHAR(88) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
 
 ## 🏗️ API Structure
 

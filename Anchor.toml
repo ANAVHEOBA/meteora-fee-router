@@ -4,12 +4,13 @@ anchor_version = "0.30.1"
 [features]
 resolution = true
 skip-lint = false
+skip-idl = true
 
 [programs.localnet]
-meteora_fee_router = "Dr4sAJ3wJoy9DKjrEoCwJW7axJmQweWMcBS36UB1y6KE"
+meteora_fee_router = "F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg"
 
 [programs.devnet]
-meteora_fee_router = "Dr4sAJ3wJoy9DKjrEoCwJW7axJmQweWMcBS36UB1y6KE"
+meteora_fee_router = "F9j2T1b8GJvERX5q9ijLnhkGDx62QGnk25VoAeUZueQg"
 
 [registry]
 url = "https://api.apr.dev"

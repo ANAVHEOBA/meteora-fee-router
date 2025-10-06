@@ -168,10 +168,10 @@ impl DailyDistributionState {
         (timestamp / 86400) * 86400
     }
 
-    /// Check if enough time has passed since last distribution
-    pub fn can_start_new_distribution(last_distribution_day: i64, current_timestamp: i64) -> bool {
-        let current_day = Self::get_day_start(current_timestamp);
-        current_day > last_distribution_day
+    /// Check if enough time has passed since last distribution (24 hours)
+    pub fn can_start_new_distribution(last_distribution_timestamp: i64, current_timestamp: i64) -> bool {
+        // Require 24 hours (86400 seconds) to have passed as per bounty requirements
+        current_timestamp >= last_distribution_timestamp + 86400
     }
 
     /// Update progress after processing a page of investors
@@ -273,8 +273,8 @@ pub struct GlobalDistributionState {
     /// Quote mint this global state tracks
     pub quote_mint: Pubkey,
     
-    /// Last distribution day (Unix timestamp of day start)
-    pub last_distribution_day: i64,
+    /// Last distribution timestamp (Unix timestamp when distribution started)
+    pub last_distribution_timestamp: i64,
     
     /// Total number of distributions completed
     pub total_distributions: u64,
@@ -288,7 +288,7 @@ pub struct GlobalDistributionState {
 
 impl GlobalDistributionState {
     pub const INIT_SPACE: usize = 32 +  // quote_mint
-                                   8 +   // last_distribution_day
+                                   8 +   // last_distribution_timestamp
                                    8 +   // total_distributions
                                    8 +   // total_amount_distributed
                                    64;   // reserved
@@ -302,8 +302,8 @@ impl GlobalDistributionState {
     }
 
     /// Update after completing a daily distribution
-    pub fn update_after_distribution(&mut self, distribution_day: i64, amount_distributed: u64) {
-        self.last_distribution_day = distribution_day;
+    pub fn update_after_distribution(&mut self, distribution_timestamp: i64, amount_distributed: u64) {
+        self.last_distribution_timestamp = distribution_timestamp;
         self.total_distributions = self.total_distributions.saturating_add(1);
         self.total_amount_distributed = self.total_amount_distributed.saturating_add(amount_distributed);
     }
